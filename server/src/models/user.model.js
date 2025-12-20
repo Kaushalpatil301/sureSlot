@@ -78,7 +78,8 @@ userSchema.pre("save", async function () {
     return;
   }
 
-  this.password = await bcrypt.hash(this.password, 10);
+  const rounds = parseInt(process.env.BCRYPT_ROUNDS || "10", 10);
+  this.password = await bcrypt.hash(this.password, rounds);
 });
 
 userSchema.methods.isPasswordCorrect = async function (password) {

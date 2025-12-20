@@ -18,7 +18,8 @@ import { Payment } from "../models/payment.model.js";
  * DO NOT RUN IN PRODUCTION
  */
 
-const DEMO_PASSWORD = "Demo@1234"; // Known password for testing
+const DEMO_PASSWORD = process.env.DEMO_PASSWORD || "Demo@1234"; // Known password for testing
+const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "10", 10);
 
 /**
  * Generate slots for demo (simplified version)
@@ -130,7 +131,10 @@ export const bootstrapDemoData = async () => {
       let user = await User.findOne({ email: userData.email });
 
       if (!user) {
-        const hashedPassword = await bcrypt.hash(userData.password, 10);
+        const hashedPassword = await bcrypt.hash(
+          userData.password,
+          BCRYPT_ROUNDS
+        );
         user = await User.create({
           ...userData,
           password: hashedPassword,

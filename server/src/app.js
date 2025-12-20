@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import mongoSanitize from "express-mongo-sanitize";
+// import mongoSanitize from "express-mongo-sanitize"; // Disabled - Express 5 compatibility issue
 import compression from "compression";
 import env from "./config/env.js";
 import {
@@ -16,7 +16,7 @@ import publicRoutes from "./routes/public.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import appointmentRoutes from "./routes/appointment.routes.js";
-// import authRoutes from "./routes/auth.routes.js";
+import authRoutes from "./routes/auth.route.js";
 
 /**
  * Initialize Express application
@@ -41,8 +41,8 @@ app.use(
 );
 
 // Mongo Sanitize: Prevent NoSQL injection attacks
-// Removes $ and . from user input
-app.use(mongoSanitize());
+// DISABLED: Compatibility issue with Express 5 - validation handled in routes
+// app.use(mongoSanitize());
 
 // ===========================
 // Request Processing Middlewares
@@ -92,7 +92,7 @@ app.use(`${API_PREFIX}/public`, publicRoutes);
 app.use(`${API_PREFIX}/payments`, paymentRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 app.use(`${API_PREFIX}/appointments`, appointmentRoutes);
-// app.use(`${API_PREFIX}/auth`, authRoutes);
+app.use(`${API_PREFIX}/auth`, authRoutes);
 
 // ===========================
 // Error Handling

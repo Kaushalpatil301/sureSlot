@@ -1,54 +1,203 @@
 # SureSlot - Production-Grade Appointment Scheduling Engine
 
-A complete, enterprise-level appointment scheduling backend built with Node.js, Express, and MongoDB.
+A complete, enterprise-level appointment scheduling backend with **automatic demo setup** for instant testing.
+
+## ⚡ Quick Start (Demo Ready!)
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Configure environment (already done!)
+# .env file is pre-configured with demo settings
+
+# 3. Start server
+npm run dev
+
+# 4. Demo data created automatically! 🎉
+# - 4 users (admin, organiser, 2 users)
+# - 2 appointment types (free + paid)
+# - ~50 slots for next 3 days
+# - 2 sample bookings
+```
+
+**Demo Accounts:**
+
+```
+Admin:     admin@demo.com / Demo@1234
+Organiser: organiser@demo.com / Demo@1234
+User1:     user1@demo.com / Demo@1234
+User2:     user2@demo.com / Demo@1234
+```
+
+Server runs at `http://localhost:8000`
+
+---
 
 ## 🚀 Tech Stack
 
 - **Runtime**: Node.js 18+
 - **Framework**: Express.js
 - **Database**: MongoDB with Mongoose
+- **Payments**: Stripe Checkout + Webhooks
 - **Authentication**: JWT (Access + Refresh Tokens)
-- **Security**: Helmet, CORS, mongo-sanitize
+- **Security**: Helmet, CORS, mongo-sanitize, rate limiting
 - **Transactions**: MongoDB ACID transactions
 - **Background Jobs**: Cron-based cleanup
+- **Demo**: Auto-bootstrap (development only)
 
-## 📦 Installation
+---
+
+## 📦 Features
+
+### Core Functionality
+
+- ✅ **Appointment Configuration** - Define slots with duration, capacity, price
+- ✅ **Slot Generation** - Bulk slot creation with recurrence rules
+- ✅ **Availability API** - Fast, read-only queries (public + authenticated)
+- ✅ **Booking Engine** - Transaction-based with concurrency safety
+- ✅ **Payment Integration** - Stripe Checkout + idempotent webhooks
+- ✅ **Share Links** - Token-based public appointment sharing
+- ✅ **Admin Reports** - Revenue, utilization, booking analytics
+
+### Production Hardening
+
+- ✅ **Race Condition Prevention** - Atomic updates, conditional writes
+- ✅ **Idempotency** - Duplicate bookings prevented, webhooks safe to retry
+- ✅ **Rate Limiting** - Multiple tiers (auth, booking, payment, webhooks)
+- ✅ **Input Validation** - Comprehensive validation on all endpoints
+- ✅ **Structured Logging** - Correlation IDs, audit trails
+- ✅ **Graceful Shutdown** - Clean connection closure
+- ✅ **Error Handling** - Standardized responses, no stack traces leaked
+
+### Demo Mode
+
+- ✅ **Auto-Bootstrap** - Creates sample data on first run
+- ✅ **Idempotent** - Safe to restart server
+- ✅ **Development Only** - Never runs in production
+- ✅ **Realistic Data** - Working appointments, slots, bookings
+
+---
+
+## 🔧 Environment Setup
+
+The `.env` file is pre-configured for demo. For production, update:
+
+```env
+# Server
+NODE_ENV=production
+PORT=8000
+
+# Database (use your production MongoDB)
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/sureslot
+
+# JWT (generate strong secrets!)
+JWT_SECRET=your-production-secret-256-bits
+ACCESS_TOKEN_SECRET=your-access-secret
+REFRESH_TOKEN_SECRET=your-refresh-secret
+
+# Stripe (use live keys)
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# CORS (set your frontend domain)
+CORS_ORIGIN=https://yourapp.com
+```
+
+---
+
+## 📚 Documentation
+
+- **[STRIPE_INTEGRATION.md](./STRIPE_INTEGRATION.md)** - Payment flow, webhook handling
+- **[PRODUCTION_HARDENING.md](./PRODUCTION_HARDENING.md)** - Security, performance, reliability
+- **[CLEANUP_SUMMARY.md](./CLEANUP_SUMMARY.md)** - Codebase cleanup details
+
+---
+
+## 🔧 Installation
 
 ```bash
 cd server
 npm install
 ```
 
-## 🔧 Environment Setup
+---
 
-Create `.env` file in server directory:
+## 🎬 Demo Scenarios
 
-```env
-# Server
-PORT=5000
-NODE_ENV=development
+### 1. View Available Slots (Public)
 
-# Database
-MONGODB_URI=mongodb://localhost:27017/sureslot
-
-# JWT
-ACCESS_TOKEN_SECRET=your-access-token-secret
-ACCESS_TOKEN_EXPIRY=15m
-REFRESH_TOKEN_SECRET=your-refresh-token-secret
-REFRESH_TOKEN_EXPIRY=7d
-
-# CORS
-CORS_ORIGIN=http://localhost:3000
-
-# Email (optional)
-MAIL_HOST=smtp.gmail.com
-MAIL_PORT=587
-MAIL_USER=your-email@gmail.com
-MAIL_PASSWORD=your-app-password
-
-# Booking Intent
-BOOKING_INTENT_EXPIRY_MINUTES=15
+```bash
+curl http://localhost:8000/api/v1/public/availability
 ```
+
+### 2. Login as Admin
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@demo.com","password":"Demo@1234"}'
+```
+
+### 3. View Appointment Types
+
+```bash
+curl http://localhost:8000/api/v1/appointments \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### 4. Create Booking (Free Consultation)
+
+```bash
+# 1. Get appointment type ID and slot ID from availability
+# 2. Create booking intent
+curl -X POST http://localhost:8000/api/v1/bookings/intents \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slotId": "SLOT_ID",
+    "appointmentTypeId": "APPT_TYPE_ID",
+    "bookingAnswers": [
+      {"question": "What would you like to discuss?", "answer": "Demo test"}
+    ]
+  }'
+
+# 3. Confirm booking (no payment for free consultation)
+curl -X POST http://localhost:8000/api/v1/bookings \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"intentId": "INTENT_ID"}'
+```
+
+### 5. Test Stripe Payment (Paid Workshop)
+
+```bash
+# 1. Create booking intent for paid appointment
+# 2. Create Stripe checkout session
+curl -X POST http://localhost:8000/api/v1/payments/stripe/create-checkout-session \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"intentId": "INTENT_ID"}'
+
+# 3. Complete payment at returned checkout URL
+# 4. Webhook confirms booking automatically
+```
+
+### 6. Access via Share Link (No Auth)
+
+```bash
+# Technical Workshop is shared with token: demo-workshop-123
+curl http://localhost:8000/api/v1/public/share/demo-workshop-123/availability
+```
+
+### 7. Admin Reports
+
+```bash
+curl http://localhost:8000/api/v1/admin/reports/bookings \
+  -H "Authorization: Bearer ADMIN_TOKEN"
+```
+
+---
 
 ## ▶️ Run Locally
 

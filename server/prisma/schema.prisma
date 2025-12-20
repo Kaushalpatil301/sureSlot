@@ -1,0 +1,370 @@
+// Prisma Schema for Appointment Booking System
+// Database: MySQL (Local)
+// Generated: December 2025
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER MANAGEMENT
+// ============================================
+
+enum UserRole {
+  USER
+  ORGANISER
+  ADMIN
+}
+
+model User {
+  id               Int       @id @default(autoincrement())
+  fullname         String    @db.VarChar(255)
+  email            String    @unique @db.VarChar(255)
+  username         String    @unique @db.VarChar(100)
+  password         String    @db.VarChar(255)
+  avatar           String?   @db.VarChar(500)
+  role             UserRole  @default(USER)
+  isEmailVerified  Boolean   @default(false)
+  isActive         Boolean   @default(true)
+  emailVerifyToken String?   @db.VarChar(255)
+  emailVerifyExpiry DateTime?
+  passwordResetToken String? @db.VarChar(255)
+  passwordResetExpiry DateTime?
+  refreshToken     String?   @db.Text
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  // Relations
+  appointmentTypes AppointmentType[] @relation("CreatedAppointments")
+  bookings         Booking[]
+  bookingIntents   BookingIntent[]
+  providedSlots    Slot[]            @relation("ProviderSlots")
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+
+  @@index([email])
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+// ============================================
+// APPOINTMENT CONFIGURATION
+// ============================================
+
+enum AppointmentTypeEnum {
+  USER
+  RESOURCE
+}
+
+model AppointmentType {
+  id                      Int                  @id @default(autoincrement())
+  userId                  Int
+  name                    String               @db.VarChar(255)
+  description             String?              @db.Text
+  duration                Int                  // minutes
+  price                   Decimal              @db.Decimal(10, 2)
+  currency                String               @default("USD") @db.VarChar(10)
+  type                    AppointmentTypeEnum  @default(USER)
+  capacity                Int                  @default(1)
+  
+  // Booking rules
+  requiresAdvancePayment  Boolean              @default(false)
+  requiresManualConfirmation Boolean           @default(false)
+  autoAssignProvider      Boolean              @default(true)
+  maxAdvanceBooking       Int                  @default(90) // days
+  minAdvanceBooking       Int                  @default(0)  // hours
+  cancellationCutoff      Int                  @default(24) // hours before
+  
+  // Working hours (JSON for flexibility)
+  workingHours            Json                 // {monday: {enabled, start, end}, ...}
+  
+  // Publishing
+  isPublished             Boolean              @default(false)
+  isShareEnabled          Boolean              @default(false)
+  shareToken              String?              @unique @db.VarChar(64)
+  shareTokenExpiry        DateTime?
+  
+  // Slot generation
+  lastSlotGeneration      DateTime?
+  slotGenerationEndDate   DateTime?
+  
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  // Relations
+  user                    User                 @relation("CreatedAppointments", fields: [userId], references: [id], onDelete: Cascade)
+  questions               AppointmentQuestion[]
+  slots                   Slot[]
+
+  @@index([userId])
+  @@index([isPublished])
+  @@index([shareToken])
+  @@map("appointment_types")
+}
+
+enum QuestionType {
+  TEXT
+  TEXTAREA
+  NUMBER
+  EMAIL
+  PHONE
+  SELECT
+  RADIO
+  CHECKBOX
+}
+
+model AppointmentQuestion {
+  id                Int             @id @default(autoincrement())
+  appointmentTypeId Int
+  type              QuestionType
+  label             String          @db.VarChar(255)
+  placeholder       String?         @db.VarChar(255)
+  required          Boolean         @default(false)
+  options           Json?           // For SELECT, RADIO, CHECKBOX
+  orderIndex        Int             @default(0)
+  
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  // Relations
+  appointmentType   AppointmentType @relation(fields: [appointmentTypeId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentTypeId])
+  @@map("appointment_questions")
+}
+
+// ============================================
+// SLOT & AVAILABILITY
+// ============================================
+
+model Slot {
+  id                Int             @id @default(autoincrement())
+  appointmentTypeId Int
+  providerId        Int?
+  startTime         DateTime
+  endTime           DateTime
+  duration          Int             // minutes
+  capacity          Int             @default(1)
+  bookedCount       Int             @default(0)
+  
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  // Relations
+  appointmentType   AppointmentType @relation(fields: [appointmentTypeId], references: [id], onDelete: Cascade)
+  provider          User?           @relation("ProviderSlots", fields: [providerId], references: [id], onDelete: SetNull)
+  bookings          Booking[]
+
+  @@index([appointmentTypeId, startTime])
+  @@index([providerId, startTime])
+  @@index([startTime])
+  @@map("slots")
+}
+
+// ============================================
+// BOOKING LIFECYCLE
+// ============================================
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  REJECTED
+}
+
+model Booking {
+  id           Int           @id @default(autoincrement())
+  userId       Int
+  slotId       Int
+  status       BookingStatus @default(PENDING)
+  answers      Json?         // Array of {questionId, answer}
+  notes        String?       @db.Text
+  
+  // Confirmation tracking
+  confirmedAt  DateTime?
+  confirmedBy  Int?
+  cancelledAt  DateTime?
+  cancelReason String?       @db.Text
+  
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // Relations
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slot         Slot          @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  payments     Payment[]
+  
+  @@index([userId])
+  @@index([slotId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("bookings")
+}
+
+// ============================================
+// PAYMENT FLOW
+// ============================================
+
+enum BookingIntentStatus {
+  PENDING
+  CONFIRMED
+  EXPIRED
+  FAILED
+}
+
+model BookingIntent {
+  id                Int                  @id @default(autoincrement())
+  userId            Int
+  appointmentTypeId Int
+  slotId            Int
+  answers           Json?
+  amount            Decimal              @db.Decimal(10, 2)
+  currency          String               @db.VarChar(10)
+  status            BookingIntentStatus  @default(PENDING)
+  expiresAt         DateTime
+  
+  // Stripe
+  stripePaymentIntentId String?          @unique @db.VarChar(255)
+  
+  // Fulfillment
+  bookingId         Int?                 @unique
+  
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  // Relations
+  user              User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([stripePaymentIntentId])
+  @@map("booking_intents")
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id                    Int           @id @default(autoincrement())
+  bookingId             Int
+  amount                Decimal       @db.Decimal(10, 2)
+  currency              String        @db.VarChar(10)
+  status                PaymentStatus @default(PENDING)
+  
+  // Stripe
+  stripePaymentIntentId String        @unique @db.VarChar(255)
+  stripeChargeId        String?       @db.VarChar(255)
+  
+  // Metadata
+  paymentMethod         String?       @db.VarChar(50)
+  paidAt                DateTime?
+  failureReason         String?       @db.Text
+  
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  // Relations
+  booking               Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([status])
+  @@index([stripePaymentIntentId])
+  @@map("payments")
+}
+
+// ============================================
+// NOTIFICATIONS (NEW)
+// ============================================
+
+enum NotificationType {
+  BOOKING_CONFIRMED
+  BOOKING_CANCELLED
+  BOOKING_PENDING
+  BOOKING_REJECTED
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  APPOINTMENT_REMINDER
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  PUSH
+}
+
+model Notification {
+  id         Int                 @id @default(autoincrement())
+  userId     Int
+  type       NotificationType
+  channel    NotificationChannel @default(EMAIL)
+  subject    String              @db.VarChar(255)
+  message    String              @db.Text
+  metadata   Json?
+  
+  sentAt     DateTime?
+  readAt     DateTime?
+  failedAt   DateTime?
+  
+  createdAt  DateTime            @default(now())
+
+  // Relations
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([type])
+  @@index([sentAt])
+  @@map("notifications")
+}
+
+// ============================================
+// AUDIT LOGS (NEW)
+// ============================================
+
+enum AuditAction {
+  USER_CREATED
+  USER_UPDATED
+  USER_ACTIVATED
+  USER_DEACTIVATED
+  ROLE_CHANGED
+  BOOKING_CREATED
+  BOOKING_CONFIRMED
+  BOOKING_REJECTED
+  BOOKING_CANCELLED
+  APPOINTMENT_CREATED
+  APPOINTMENT_PUBLISHED
+  APPOINTMENT_UNPUBLISHED
+  PAYMENT_PROCESSED
+}
+
+model AuditLog {
+  id         Int         @id @default(autoincrement())
+  userId     Int?
+  action     AuditAction
+  entityType String      @db.VarChar(50)
+  entityId   Int?
+  metadata   Json?
+  ipAddress  String?     @db.VarChar(45)
+  userAgent  String?     @db.Text
+  
+  createdAt  DateTime    @default(now())
+
+  // Relations
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

@@ -6,8 +6,23 @@ import { Booking } from "../models/booking.model.js";
 import { BookingIntent } from "../models/bookingIntent.model.js";
 import { Payment } from "../models/payment.model.js";
 
-const DEMO_PASSWORD = "Demo@1234"; 
+/**
+ * Demo Bootstrap
+ *
+ * Creates minimal demo data for local development
+ * - Only runs in development mode
+ * - Idempotent: safe to restart server
+ * - Uses existing services where possible
+ * - Checks existence before creating
+ *
+ * DO NOT RUN IN PRODUCTION
+ */
 
+const DEMO_PASSWORD = "Demo@1234"; // Known password for testing
+
+/**
+ * Generate slots for demo (simplified version)
+ */
 const generateDemoSlots = (
   appointmentTypeId,
   startDate,
@@ -24,11 +39,13 @@ const generateDemoSlots = (
   while (currentDate <= endDate) {
     const dayOfWeek = currentDate.getDay();
 
+    // Check if this day should have slots
     if (daysOfWeek.includes(dayOfWeek)) {
-      
+      // Parse start and end times
       const [startHour, startMin] = startTime.split(":").map(Number);
       const [endHour, endMin] = endTime.split(":").map(Number);
 
+      // Generate slots for this day
       let currentSlotStart = new Date(currentDate);
       currentSlotStart.setHours(startHour, startMin, 0, 0);
 
@@ -55,6 +72,7 @@ const generateDemoSlots = (
       }
     }
 
+    // Move to next day
     currentDate.setDate(currentDate.getDate() + 1);
   }
 
@@ -62,7 +80,7 @@ const generateDemoSlots = (
 };
 
 export const bootstrapDemoData = async () => {
-  
+  // Safety check: Only run in development
   if (process.env.NODE_ENV === "production") {
     console.log("⏭️  Skipping demo bootstrap (production mode)");
     return;
@@ -70,6 +88,10 @@ export const bootstrapDemoData = async () => {
 
   try {
     console.log("\n🎬 Starting demo bootstrap...");
+
+    // ===========================
+    // 1. CREATE DEMO USERS
+    // ===========================
 
     const demoUsers = [
       {
@@ -112,7 +134,7 @@ export const bootstrapDemoData = async () => {
         user = await User.create({
           ...userData,
           password: hashedPassword,
-          isEmailVerified: true, 
+          isEmailVerified: true, // All demo users verified
         });
         console.log(
           `✅ Created demo user: ${userData.email} (${userData.role})`
@@ -124,11 +146,16 @@ export const bootstrapDemoData = async () => {
       createdUsers[userData.role] = user;
     }
 
+    // ===========================
+    // 2. CREATE APPOINTMENT TYPES
+    // ===========================
+
     const organiserId = createdUsers.ORGANISER._id;
 
+    // Appointment Type 1: Free Consultation (No payment)
     let freeConsultation = await AppointmentType.findOne({
       name: "Free Consultation",
-      userId: organiserId,
+      createdBy: organiserId,
     });
 
     if (!freeConsultation) {
@@ -137,7 +164,7 @@ export const bootstrapDemoData = async () => {
         description: "30-minute free consultation call",
         duration: 30,
         capacity: 3,
-        requiresPayment: false,
+        requiresAdvancePayment: false,
         price: 0,
         currency: "USD",
         status: "PUBLISHED",
@@ -154,6 +181,7 @@ export const bootstrapDemoData = async () => {
       console.log("⏭️  Appointment type already exists: Free Consultation");
     }
 
+    // Appointment Type 2: Paid Workshop (Requires payment)
     let paidWorkshop = await AppointmentType.findOne({
       name: "Technical Workshop",
       userId: organiserId,
@@ -165,13 +193,11 @@ export const bootstrapDemoData = async () => {
         description: "1-hour hands-on technical workshop",
         duration: 60,
         capacity: 10,
-        requiresPayment: true,
-        price: 4999, 
+        requiresAdvancePayment: true,
+        price: 4999, // $49.99
         currency: "USD",
         status: "PUBLISHED",
         userId: organiserId,
-        isShareEnabled: true,
-        shareToken: "demo-workshop-123",
         bookingQuestions: [
           {
             question: "What is your experience level?",
@@ -188,13 +214,18 @@ export const bootstrapDemoData = async () => {
       console.log("⏭️  Appointment type already exists: Technical Workshop");
     }
 
+    // ===========================
+    // 3. GENERATE SLOTS
+    // ===========================
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const startDate = today;
     const endDate = new Date(today);
-    endDate.setDate(endDate.getDate() + 3); 
+    endDate.setDate(endDate.getDate() + 3); // Next 3 days
 
+    // Generate slots for Free Consultation
     const existingFreeSlots = await Slot.countDocuments({
       appointmentTypeId: freeConsultation._id,
     });
@@ -204,9 +235,9 @@ export const bootstrapDemoData = async () => {
         freeConsultation._id,
         startDate,
         endDate,
-        30, 
-        3, 
-        [1, 2, 3, 4, 5], 
+        30, // duration
+        3, // capacity
+        [1, 2, 3, 4, 5], // Mon-Fri
         "09:00",
         "17:00"
       );
@@ -221,6 +252,7 @@ export const bootstrapDemoData = async () => {
       );
     }
 
+    // Generate slots for Paid Workshop
     const existingPaidSlots = await Slot.countDocuments({
       appointmentTypeId: paidWorkshop._id,
     });
@@ -230,9 +262,9 @@ export const bootstrapDemoData = async () => {
         paidWorkshop._id,
         startDate,
         endDate,
-        60, 
-        10, 
-        [1, 3, 5], 
+        60, // duration
+        10, // capacity
+        [1, 3, 5], // Mon, Wed, Fri
         "10:00",
         "16:00"
       );
@@ -247,6 +279,11 @@ export const bootstrapDemoData = async () => {
       );
     }
 
+    // ===========================
+    // 4. CREATE DEMO BOOKINGS
+    // ===========================
+
+    // Get a slot for booking
     const availableSlot = await Slot.findOne({
       appointmentTypeId: freeConsultation._id,
       status: "AVAILABLE",
@@ -260,7 +297,7 @@ export const bootstrapDemoData = async () => {
       });
 
       if (!existingBooking) {
-        
+        // Create confirmed booking
         const booking = await Booking.create({
           userId: createdUsers.USER._id,
           slotId: availableSlot._id,
@@ -274,6 +311,7 @@ export const bootstrapDemoData = async () => {
           ],
         });
 
+        // Increment slot's bookedCount
         await Slot.findByIdAndUpdate(availableSlot._id, {
           $inc: { bookedCount: 1 },
         });
@@ -284,6 +322,7 @@ export const bootstrapDemoData = async () => {
       }
     }
 
+    // Create a pending booking intent
     const pendingSlot = await Slot.findOne({
       appointmentTypeId: paidWorkshop._id,
       status: "AVAILABLE",
@@ -306,8 +345,6 @@ export const bootstrapDemoData = async () => {
           appointmentTypeId: paidWorkshop._id,
           status: "PENDING",
           expiresAt,
-          amount: 4999, 
-          currency: "USD",
           bookingAnswers: [
             {
               question: "What is your experience level?",
@@ -322,14 +359,16 @@ export const bootstrapDemoData = async () => {
       }
     }
 
-    console.log("\n🎉 Demo bootstrap complete!");
-    console.log("\n📋 Demo Accounts:");
-    console.log("   Admin:     admin@demo.com / Demo@1234");
-    console.log("   Organiser: organiser@demo.com / Demo@1234");
-    console.log("   User1:     user1@demo.com / Demo@1234");
-    console.log("   User2:     user2@demo.com / Demo@1234\n");
+    // ===========================
+    // 5. SKIP DEMO PAYMENTS
+    // ===========================
+
+    // Payments are created automatically by the Stripe webhook handler
+    // Manual payment creation skipped to avoid enum validation issues
+
+    console.log("\n✅ Demo bootstrap completed successfully!\n");
   } catch (error) {
     console.error("❌ Demo bootstrap failed:", error.message);
-    
+    // Don't throw - let server continue even if demo fails
   }
 };

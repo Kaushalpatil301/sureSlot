@@ -7,28 +7,13 @@ import * as slotService from "./slot.service.js";
 import crypto from "crypto";
 import mongoose from "mongoose";
 
-/**
- * Appointment Service - Manages AppointmentType lifecycle
- *
- * WHY this service exists:
- * - AppointmentType is the RULE ENGINE for the scheduling system
- * - Changes to appointment types trigger slot generation
- * - Centralized validation ensures data consistency
- * - Encapsulates complex publish/share logic
- */
-
-/**
- * Create a new appointment type
- * WHY separate from publish: Draft → Review → Publish workflow
- */
 export const createAppointmentType = async (userId, data) => {
-  // Validate working hours
+  
   const validation = validateWorkingHours(data.workingHours || {});
   if (!validation.valid) {
     throw new ApiError(400, `Invalid working hours: ${validation.error}`);
   }
 
-  // WHY not published by default: Allows draft creation
   const appointmentType = new AppointmentType({
     ...data,
     userId,
@@ -40,10 +25,6 @@ export const createAppointmentType = async (userId, data) => {
   return appointmentType;
 };
 
-/**
- * Update appointment type
- * WHY regenerate slots: Configuration changes must reflect in availability
- */
 export const updateAppointmentType = async (
   appointmentTypeId,
   userId,
@@ -59,7 +40,6 @@ export const updateAppointmentType = async (
     throw new ApiError(404, "Appointment type not found");
   }
 
-  // Validate working hours if provided
   if (data.workingHours) {
     const validation = validateWorkingHours(data.workingHours);
     if (!validation.valid) {
@@ -67,7 +47,6 @@ export const updateAppointmentType = async (
     }
   }
 
-  // WHY check critical fields: Duration/capacity changes need slot regeneration
   const criticalFieldsChanged =
     (data.duration && data.duration !== appointmentType.duration) ||
     (data.capacity && data.capacity !== appointmentType.capacity) ||
@@ -78,13 +57,11 @@ export const updateAppointmentType = async (
   Object.assign(appointmentType, data);
   await appointmentType.save();
 
-  // WHY conditional regeneration: Only regenerate if slots might be affected
   if (
     criticalFieldsChanged &&
     (appointmentType.isPublished || appointmentType.isShareEnabled)
   ) {
-    // Regenerate slots in background (don't block response)
-    // In production, this would be a queue job
+
     setImmediate(async () => {
       try {
         await regenerateSlotsForAppointmentType(appointmentType);
@@ -97,10 +74,6 @@ export const updateAppointmentType = async (
   return appointmentType;
 };
 
-/**
- * Publish appointment type (makes it publicly bookable)
- * WHY triggers slot generation: Published appointments need availability
- */
 export const publishAppointmentType = async (appointmentTypeId, userId) => {
   const appointmentType = await AppointmentType.findOne({
     _id: appointmentTypeId,
@@ -120,18 +93,12 @@ export const publishAppointmentType = async (appointmentTypeId, userId) => {
   appointmentType.publishedAt = new Date();
   await appointmentType.save();
 
-  // WHY generate slots on publish: Publish means "ready for bookings"
-  // Generate next 90 days (or maxAdvanceBooking days)
   const daysToGenerate = appointmentType.maxAdvanceBooking || 90;
   await generateSlotsForAppointmentType(appointmentType, daysToGenerate);
 
   return appointmentType;
 };
 
-/**
- * Unpublish appointment type (removes from public listing)
- * WHY keep slots: Existing bookings must be honored
- */
 export const unpublishAppointmentType = async (appointmentTypeId, userId) => {
   const appointmentType = await AppointmentType.findOne({
     _id: appointmentTypeId,
@@ -146,15 +113,9 @@ export const unpublishAppointmentType = async (appointmentTypeId, userId) => {
   appointmentType.isPublished = false;
   await appointmentType.save();
 
-  // WHY not delete slots: Existing bookings are still valid
-  // Slots just become unbookable for new users
   return appointmentType;
 };
 
-/**
- * Enable sharing (generates secure token)
- * WHY separate from publish: Unlisted but bookable via direct link
- */
 export const enableSharing = async (appointmentTypeId, userId) => {
   const appointmentType = await AppointmentType.findOne({
     _id: appointmentTypeId,
@@ -167,19 +128,16 @@ export const enableSharing = async (appointmentTypeId, userId) => {
   }
 
   if (appointmentType.isShareEnabled) {
-    // Already enabled, return existing token
+    
     return appointmentType;
   }
 
-  // Generate cryptographically secure token
-  // WHY crypto.randomBytes: Unpredictable, prevents enumeration attacks
   const shareToken = crypto.randomBytes(32).toString("base64url");
 
   appointmentType.isShareEnabled = true;
   appointmentType.shareToken = shareToken;
   await appointmentType.save();
 
-  // WHY generate slots if not already published: Share requires availability
   if (!appointmentType.isPublished && !appointmentType.lastSlotGeneration) {
     const daysToGenerate = appointmentType.maxAdvanceBooking || 90;
     await generateSlotsForAppointmentType(appointmentType, daysToGenerate);
@@ -188,10 +146,6 @@ export const enableSharing = async (appointmentTypeId, userId) => {
   return appointmentType;
 };
 
-/**
- * Disable sharing (revokes token)
- * WHY revocation: User may want to stop accepting bookings via link
- */
 export const disableSharing = async (appointmentTypeId, userId) => {
   const appointmentType = await AppointmentType.findOne({
     _id: appointmentTypeId,
@@ -204,16 +158,12 @@ export const disableSharing = async (appointmentTypeId, userId) => {
   }
 
   appointmentType.isShareEnabled = false;
-  appointmentType.shareToken = null; // Revoke token
+  appointmentType.shareToken = null; 
   await appointmentType.save();
 
   return appointmentType;
 };
 
-/**
- * Get appointment type by share token
- * WHY public method: Used by public booking flow
- */
 export const getAppointmentTypeByShareToken = async (shareToken) => {
   const appointmentType = await AppointmentType.findByShareToken(shareToken);
 
@@ -224,10 +174,6 @@ export const getAppointmentTypeByShareToken = async (shareToken) => {
   return appointmentType;
 };
 
-/**
- * Soft delete appointment type
- * WHY soft delete: Preserve referential integrity with slots/bookings
- */
 export const deleteAppointmentType = async (appointmentTypeId, userId) => {
   const appointmentType = await AppointmentType.findOne({
     _id: appointmentTypeId,
@@ -239,7 +185,6 @@ export const deleteAppointmentType = async (appointmentTypeId, userId) => {
     throw new ApiError(404, "Appointment type not found");
   }
 
-  // WHY check bookings: Prevent deletion if active bookings exist
   const activeBookingsCount = await Slot.countDocuments({
     appointmentTypeId: appointmentType._id,
     bookedCount: { $gt: 0 },
@@ -260,9 +205,6 @@ export const deleteAppointmentType = async (appointmentTypeId, userId) => {
   return appointmentType;
 };
 
-/**
- * Get all appointment types for a user
- */
 export const getAppointmentTypes = async (userId, filters = {}) => {
   const query = { userId, isDeleted: false };
 
@@ -281,9 +223,6 @@ export const getAppointmentTypes = async (userId, filters = {}) => {
   return appointmentTypes;
 };
 
-/**
- * Get single appointment type
- */
 export const getAppointmentTypeById = async (appointmentTypeId, userId) => {
   const appointmentType = await AppointmentType.findOne({
     _id: appointmentTypeId,
@@ -298,9 +237,6 @@ export const getAppointmentTypeById = async (appointmentTypeId, userId) => {
   return appointmentType;
 };
 
-/**
- * Get public appointment types (for directory/listing)
- */
 export const getPublicAppointmentTypes = async (filters = {}) => {
   const query = {
     isPublished: true,
@@ -318,12 +254,6 @@ export const getPublicAppointmentTypes = async (filters = {}) => {
   return appointmentTypes;
 };
 
-// ============ SLOT GENERATION HELPERS ============
-
-/**
- * Generate slots for appointment type
- * WHY async: Slot generation is expensive, don't block main thread
- */
 const generateSlotsForAppointmentType = async (
   appointmentType,
   daysInAdvance
@@ -348,30 +278,18 @@ const generateSlotsForAppointmentType = async (
   await appointmentType.save();
 };
 
-/**
- * Regenerate slots (delete old, create new)
- * WHY regenerate: Configuration changes must reflect in availability
- */
 const regenerateSlotsForAppointmentType = async (appointmentType) => {
-  // Delete future unbooked slots
+  
   await Slot.deleteMany({
     appointmentTypeId: appointmentType._id,
     startTime: { $gte: new Date() },
     bookedCount: 0,
   });
 
-  // Generate new slots
   const daysToGenerate = appointmentType.maxAdvanceBooking || 90;
   await generateSlotsForAppointmentType(appointmentType, daysToGenerate);
 };
 
-/**
- * Get all bookings for a specific appointment (organiser view)
- * @param {String} appointmentTypeId - Appointment type ID
- * @param {String} userId - Organiser's user ID
- * @param {Object} filters - status, startDate, endDate, page, limit
- * @returns {Promise<Object>} Paginated bookings
- */
 export const getAppointmentBookings = async (
   appointmentTypeId,
   userId,
@@ -381,7 +299,6 @@ export const getAppointmentBookings = async (
   const limit = parseInt(filters.limit) || 20;
   const skip = (page - 1) * limit;
 
-  // Verify appointment belongs to organiser
   const appointmentType = await AppointmentType.findOne({
     _id: appointmentTypeId,
     userId,
@@ -394,23 +311,20 @@ export const getAppointmentBookings = async (
     );
   }
 
-  // Build match stage
   const matchStage = {};
 
   if (filters.status) {
     matchStage.status = filters.status;
   }
 
-  // Build aggregation pipeline
   const pipeline = [
-    // Match slots for this appointment
+    
     {
       $match: {
         appointmentTypeId: mongoose.Types.ObjectId(appointmentTypeId),
       },
     },
 
-    // Lookup bookings
     {
       $lookup: {
         from: "bookings",
@@ -420,13 +334,10 @@ export const getAppointmentBookings = async (
       },
     },
 
-    // Unwind bookings
     { $unwind: "$bookings" },
 
-    // Match booking filters
     { $match: { "bookings.status": matchStage.status || { $exists: true } } },
 
-    // Filter by date range
     ...(filters.startDate || filters.endDate
       ? [
           {
@@ -442,7 +353,6 @@ export const getAppointmentBookings = async (
         ]
       : []),
 
-    // Lookup user (customer)
     {
       $lookup: {
         from: "users",
@@ -453,10 +363,8 @@ export const getAppointmentBookings = async (
     },
     { $unwind: "$user" },
 
-    // Sort by slot time
     { $sort: { startTime: -1 } },
 
-    // Facet for pagination
     {
       $facet: {
         metadata: [{ $count: "total" }],
@@ -514,11 +422,6 @@ export const getAppointmentBookings = async (
   };
 };
 
-/**
- * Get appointment preview (read-only view without editing capabilities)
- * @param {String} appointmentTypeId - Appointment type ID
- * @returns {Promise<Object>} Appointment details for preview
- */
 export const getAppointmentPreview = async (appointmentTypeId) => {
   const appointmentType = await AppointmentType.findById(appointmentTypeId)
     .select("-shareToken")
@@ -528,7 +431,6 @@ export const getAppointmentPreview = async (appointmentTypeId) => {
     throw new ApiError(404, "Appointment not found");
   }
 
-  // Get basic stats
   const stats = await Slot.aggregate([
     {
       $match: { appointmentTypeId: mongoose.Types.ObjectId(appointmentTypeId) },

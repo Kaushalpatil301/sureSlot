@@ -1,20 +1,8 @@
-/**
- * Production Hardening - Input Validation Utilities
- *
- * WHY strict validation:
- * - Prevent injection attacks (NoSQL, XSS)
- * - Catch edge cases early (invalid dates, negative amounts)
- * - Fail fast with clear error messages
- * - Reduce downstream bugs
- */
+
 
 import { ApiError } from "./api-error.js";
 import mongoose from "mongoose";
 
-/**
- * Validates MongoDB ObjectId
- * WHY: Prevents invalid ID queries that cause server errors
- */
 export const validateObjectId = (id, fieldName = "ID") => {
   if (!id) {
     throw new ApiError(400, `${fieldName} is required`);
@@ -27,10 +15,6 @@ export const validateObjectId = (id, fieldName = "ID") => {
   return true;
 };
 
-/**
- * Validates date is in the future
- * WHY: Prevent booking past dates
- */
 export const validateFutureDate = (date, fieldName = "date") => {
   const dateObj = new Date(date);
 
@@ -45,10 +29,6 @@ export const validateFutureDate = (date, fieldName = "date") => {
   return dateObj;
 };
 
-/**
- * Validates date range
- * WHY: Prevent invalid queries (endDate before startDate)
- */
 export const validateDateRange = (startDate, endDate) => {
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -65,8 +45,7 @@ export const validateDateRange = (startDate, endDate) => {
     throw new ApiError(400, "End date must be after start date");
   }
 
-  // Prevent unreasonably large date ranges (DOS prevention)
-  const maxRangeDays = 365; // 1 year
+  const maxRangeDays = 365; 
   const rangeDays = (end - start) / (1000 * 60 * 60 * 24);
 
   if (rangeDays > maxRangeDays) {
@@ -76,10 +55,6 @@ export const validateDateRange = (startDate, endDate) => {
   return { start, end };
 };
 
-/**
- * Validates positive number
- * WHY: Prevent negative amounts, capacities, etc.
- */
 export const validatePositiveNumber = (
   value,
   fieldName = "value",
@@ -106,10 +81,6 @@ export const validatePositiveNumber = (
   return num;
 };
 
-/**
- * Validates string length
- * WHY: Prevent DOS via huge strings, ensure data quality
- */
 export const validateString = (value, fieldName = "field", options = {}) => {
   if (typeof value !== "string") {
     throw new ApiError(400, `${fieldName} must be a string`);
@@ -140,10 +111,6 @@ export const validateString = (value, fieldName = "field", options = {}) => {
   return value.trim();
 };
 
-/**
- * Validates enum value
- * WHY: Prevent invalid status values, etc.
- */
 export const validateEnum = (value, allowedValues, fieldName = "value") => {
   if (!allowedValues.includes(value)) {
     throw new ApiError(
@@ -155,10 +122,6 @@ export const validateEnum = (value, allowedValues, fieldName = "value") => {
   return value;
 };
 
-/**
- * Validates booking answers
- * WHY: Prevent huge payloads, invalid data types
- */
 export const validateBookingAnswers = (answers) => {
   if (!answers) return {};
 
@@ -166,8 +129,8 @@ export const validateBookingAnswers = (answers) => {
     throw new ApiError(400, "Booking answers must be an object");
   }
 
-  const maxQuestions = 50; // Reasonable limit
-  const maxAnswerLength = 1000; // Prevent DOS
+  const maxQuestions = 50; 
+  const maxAnswerLength = 1000; 
 
   const keys = Object.keys(answers);
 
@@ -179,12 +142,11 @@ export const validateBookingAnswers = (answers) => {
   }
 
   keys.forEach((key) => {
-    // Validate key length
+    
     if (key.length > 200) {
       throw new ApiError(400, "Question text too long");
     }
 
-    // Validate answer value
     const answer = answers[key];
 
     if (typeof answer === "string" && answer.length > maxAnswerLength) {
@@ -198,15 +160,11 @@ export const validateBookingAnswers = (answers) => {
   return answers;
 };
 
-/**
- * Validates pagination parameters
- * WHY: Prevent DOS via huge page sizes
- */
 export const validatePagination = (page, limit) => {
   const pageNum = validatePositiveNumber(page || 1, "page", { min: 1 });
   const limitNum = validatePositiveNumber(limit || 10, "limit", {
     min: 1,
-    max: 100, // Max 100 items per page
+    max: 100, 
   });
 
   return {
@@ -216,10 +174,6 @@ export const validatePagination = (page, limit) => {
   };
 };
 
-/**
- * Validates URL
- * WHY: Prevent open redirect vulnerabilities
- */
 export const validateURL = (url, fieldName = "URL", options = {}) => {
   if (!url) {
     if (options.required) {
@@ -231,12 +185,10 @@ export const validateURL = (url, fieldName = "URL", options = {}) => {
   try {
     const urlObj = new URL(url);
 
-    // Only allow HTTP/HTTPS protocols
     if (!["http:", "https:"].includes(urlObj.protocol)) {
       throw new ApiError(400, `${fieldName} must be HTTP or HTTPS`);
     }
 
-    // If allowedDomains specified, validate domain
     if (options.allowedDomains && options.allowedDomains.length > 0) {
       const isAllowed = options.allowedDomains.some((domain) =>
         urlObj.hostname.endsWith(domain)
@@ -254,25 +206,19 @@ export const validateURL = (url, fieldName = "URL", options = {}) => {
   }
 };
 
-/**
- * Sanitizes user input to prevent NoSQL injection
- * WHY: MongoDB can execute operators like $gt, $ne in queries
- * Already using mongo-sanitize middleware, but extra safety for critical operations
- */
 export const sanitizeMongoQuery = (query) => {
   if (!query || typeof query !== "object") return query;
 
   const sanitized = {};
 
   Object.keys(query).forEach((key) => {
-    // Remove MongoDB operators
+    
     if (key.startsWith("$")) {
       return;
     }
 
     const value = query[key];
 
-    // Recursively sanitize nested objects
     if (value && typeof value === "object" && !Array.isArray(value)) {
       sanitized[key] = sanitizeMongoQuery(value);
     } else {
@@ -283,11 +229,6 @@ export const sanitizeMongoQuery = (query) => {
   return sanitized;
 };
 
-/**
- * Validates amount matches expected value
- * WHY: Prevent price manipulation attacks
- * Client sends amount, server verifies against source of truth
- */
 export const validateAmountMatch = (
   clientAmount,
   serverAmount,
@@ -300,10 +241,9 @@ export const validateAmountMatch = (
     throw new ApiError(400, "Invalid amount format");
   }
 
-  // Allow small floating point differences
   if (Math.abs(client - server) > tolerance) {
     throw new ApiError(400, "Amount mismatch. Please refresh and try again.");
   }
 
-  return server; // Always use server amount
+  return server; 
 };

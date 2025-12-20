@@ -2,16 +2,9 @@ import mongoose from "mongoose";
 import { ApiError } from "../utils/api-error.js";
 import env from "../config/env.js";
 
-/**
- * Global error handling middleware
- * Catches all errors from routes and controllers
- * Formats errors into consistent API response
- * Prevents server crashes and information leakage
- */
 const errorHandler = (err, req, res, next) => {
   let error = err;
 
-  // Handle non-ApiError instances (e.g., mongoose errors, unexpected errors)
   if (!(error instanceof ApiError)) {
     const statusCode =
       error.statusCode || (error instanceof mongoose.Error ? 400 : 500);
@@ -26,15 +19,13 @@ const errorHandler = (err, req, res, next) => {
     );
   }
 
-  // Prepare error response
   const response = {
     success: false,
     message: error.message,
     errors: error.errors || [],
-    ...(env.NODE_ENV === "development" && { stack: error.stack }), // Only show stack in development
+    ...(env.NODE_ENV === "development" && { stack: error.stack }), 
   };
 
-  // Log error in development for debugging
   if (env.NODE_ENV === "development") {
     console.error("🔴 Error:", {
       message: error.message,
@@ -45,14 +36,9 @@ const errorHandler = (err, req, res, next) => {
     });
   }
 
-  // Send error response
   return res.status(error.statusCode || 500).json(response);
 };
 
-/**
- * Handles 404 Not Found errors
- * Catches requests to undefined routes
- */
 const notFoundHandler = (req, res, next) => {
   const error = new ApiError(
     404,

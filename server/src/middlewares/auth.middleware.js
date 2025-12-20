@@ -26,22 +26,12 @@ export const verifyJWT = asyncHandler(async (req, res, next) => {
   next();
 });
 
-/**
- * Middleware to ensure user has ADMIN role
- * WHY separate middleware: Allows role-based access control (RBAC)
- * - Can be composed with verifyJWT: verifyJWT → requireAdmin
- * - Reusable across multiple admin routes
- * - Clear separation: authentication (verifyJWT) vs authorization (requireAdmin)
- *
- * MUST be used after verifyJWT (requires req.user to be set)
- */
 export const requireAdmin = asyncHandler(async (req, res, next) => {
-  // WHY check req.user: verifyJWT must run first to populate req.user
+  
   if (!req.user) {
     throw new ApiError(401, "Authentication required");
   }
 
-  // WHY strict equality: Prevents "admin" !== "ADMIN" bugs
   if (req.user.role !== "ADMIN") {
     throw new ApiError(403, "Access denied. Admin privileges required.");
   }
@@ -49,11 +39,6 @@ export const requireAdmin = asyncHandler(async (req, res, next) => {
   next();
 });
 
-/**
- * Middleware to ensure user has ORGANISER or ADMIN role
- * WHY organiser access: Organisers need to manage their own appointment types and slots
- * ADMIN has all ORGANISER permissions (role hierarchy)
- */
 export const requireOrganiser = asyncHandler(async (req, res, next) => {
   if (!req.user) {
     throw new ApiError(401, "Authentication required");

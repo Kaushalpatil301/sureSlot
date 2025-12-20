@@ -1,21 +1,10 @@
-/**
- * Production Hardening - Advanced Rate Limiting
- *
- * WHY multiple rate limiters:
- * - Prevent abuse of public APIs (scraping, DOS)
- * - Protect payment endpoints from fraud
- * - Prevent brute-force attacks on share links
- * - Different endpoints have different risk profiles
- */
+
 
 import rateLimit from "express-rate-limit";
 import { ApiError } from "../utils/api-error.js";
 
-// ============ EXISTING LIMITERS (from your code) ============
-
-// General API rate limiter
 export const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000, 
   max: 100,
   message: "Too many requests from this IP, please try again later",
   standardHeaders: true,
@@ -25,7 +14,6 @@ export const apiLimiter = rateLimit({
   },
 });
 
-// Strict rate limiter for authentication endpoints
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -39,7 +27,6 @@ export const authLimiter = rateLimit({
   },
 });
 
-// Medium rate limiter for password reset
 export const passwordResetLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 3,
@@ -52,7 +39,6 @@ export const passwordResetLimiter = rateLimit({
   },
 });
 
-// Email verification limiter
 export const emailVerificationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 3,
@@ -65,16 +51,9 @@ export const emailVerificationLimiter = rateLimit({
   },
 });
 
-// ============ NEW PRODUCTION HARDENING LIMITERS ============
-
-/**
- * Public availability API limiter
- * WHY: Public endpoints can be abused for scraping or DOS
- * More lenient than auth but still protected
- */
 export const publicApiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // Higher limit for public APIs
+  windowMs: 15 * 60 * 1000, 
+  max: 200, 
   message: "Too many requests, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
@@ -83,20 +62,15 @@ export const publicApiLimiter = rateLimit({
   },
 });
 
-/**
- * Share link access limiter (per token)
- * WHY: Prevent brute-force attacks on share tokens
- * Track by token + IP combination
- */
 export const shareLinkLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 50, // 50 requests per token per IP per 10 min
+  windowMs: 10 * 60 * 1000, 
+  max: 50, 
   keyGenerator: (req) => {
-    // Combine shareToken from params/query and IP
+    
     const token = req.params.shareToken || req.query.shareToken || "unknown";
     return `${token}:${req.ip}`;
   },
-  skipSuccessfulRequests: false, // Count all requests
+  skipSuccessfulRequests: false, 
   message: "Too many attempts to access this share link",
   handler: (req, res) => {
     throw new ApiError(
@@ -106,16 +80,11 @@ export const shareLinkLimiter = rateLimit({
   },
 });
 
-/**
- * Booking creation limiter (per user)
- * WHY: Prevent spam bookings, accidental duplicate clicks
- * Track by user ID (if authenticated) or IP
- */
 export const bookingCreationLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 10, // Max 10 booking attempts per 5 minutes
+  windowMs: 5 * 60 * 1000, 
+  max: 10, 
   keyGenerator: (req) => {
-    // Use userId if available (authenticated), otherwise IP
+    
     return req.user?._id?.toString() || req.ip;
   },
   skipSuccessfulRequests: false,
@@ -128,14 +97,9 @@ export const bookingCreationLimiter = rateLimit({
   },
 });
 
-/**
- * Payment intent creation limiter
- * WHY: Prevent payment fraud, spam intents
- * Stricter than booking because payment intents reserve slots
- */
 export const paymentIntentLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 5, // Max 5 payment intents per 10 minutes per user
+  windowMs: 10 * 60 * 1000, 
+  max: 5, 
   keyGenerator: (req) => {
     return req.user?._id?.toString() || req.ip;
   },
@@ -149,22 +113,17 @@ export const paymentIntentLimiter = rateLimit({
   },
 });
 
-/**
- * Stripe webhook limiter
- * WHY: Even though webhooks have signature verification, rate limit as defense in depth
- * More lenient because Stripe may retry failed webhooks
- */
 export const webhookLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 100, // 100 webhook events per minute
+  windowMs: 1 * 60 * 1000, 
+  max: 100, 
   keyGenerator: (req) => {
-    // Use Stripe signature as key (unique per event)
+    
     return req.headers["stripe-signature"] || req.ip;
   },
-  skipSuccessfulRequests: true, // Don't count successful webhooks
+  skipSuccessfulRequests: true, 
   message: "Too many webhook requests",
   handler: (req, res) => {
-    // For webhooks, return simple JSON (no exception)
+    
     res.status(429).json({
       success: false,
       message: "Too many requests, please retry later",
@@ -172,13 +131,9 @@ export const webhookLimiter = rateLimit({
   },
 });
 
-/**
- * Admin report generation limiter
- * WHY: Reports are expensive queries, prevent DOS
- */
 export const adminReportLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 20, // Max 20 report generations per 5 minutes
+  windowMs: 5 * 60 * 1000, 
+  max: 20, 
   keyGenerator: (req) => {
     return req.user?._id?.toString() || req.ip;
   },
@@ -191,13 +146,9 @@ export const adminReportLimiter = rateLimit({
   },
 });
 
-/**
- * Slot generation limiter (admin only)
- * WHY: Slot generation is expensive, prevent accidental DOS
- */
 export const slotGenerationLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 10, // Max 10 slot generations per 5 minutes
+  windowMs: 5 * 60 * 1000, 
+  max: 10, 
   keyGenerator: (req) => {
     return req.user?._id?.toString() || req.ip;
   },

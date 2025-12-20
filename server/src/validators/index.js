@@ -1,9 +1,5 @@
 import { body, param } from "express-validator";
 
-// ============================================
-// USER VALIDATORS
-// ============================================
-
 const userRegisterValidator = () => {
   return [
     body("email")
@@ -103,12 +99,8 @@ const userResetForgotPasswordValidator = () => {
   ];
 };
 
-// ============================================
-// EXPORTS
-// ============================================
-
 export {
-  // User validators
+  
   userRegisterValidator,
   userLoginValidator,
   userChangeCurrentPasswordValidator,

@@ -6,7 +6,7 @@ const sendEmail = async (options) => {
     theme: "default",
     product: {
       name: "SureSlot",
-      link: process.env.FRONTEND_URL || "http://localhost:5173",
+      link: process.env.FRONTEND_URL || "http://localhost:3000",
     },
   });
 

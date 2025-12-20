@@ -29,9 +29,8 @@ const userSchema = new Schema(
       required: [true, "Password is required"],
     },
     avatar: {
-      type: String, // cloudinary url
-      default:
-        "https://res.cloudinary.com/demo/image/upload/placeholder-avatar.png",
+      type: String,
+      default: "https://via.placeholder.com/200x200.png",
     },
     isEmailVerified: {
       type: Boolean,
@@ -60,14 +59,11 @@ const userSchema = new Schema(
     isActive: {
       type: Boolean,
       default: true,
-      // WHY: Allows admins to deactivate users without deleting accounts
-      // Inactive users cannot login but data is preserved
     },
   },
   { timestamps: true }
 );
 
-// Indexes for better query performance
 userSchema.index({ email: 1 });
 userSchema.index({ username: 1 });
 userSchema.index({ role: 1 });
@@ -85,7 +81,6 @@ userSchema.methods.isPasswordCorrect = async function (password) {
   return await bcrypt.compare(password, this.password);
 };
 
-// Access Token :- For short-term authentication
 userSchema.methods.generateAccessToken = function () {
   return jwt.sign(
     {
@@ -98,7 +93,6 @@ userSchema.methods.generateAccessToken = function () {
   );
 };
 
-// Refresh Token :- For long-term authentication, to get new access tokens
 userSchema.methods.generateRefreshToken = function () {
   return jwt.sign(
     {
@@ -109,7 +103,6 @@ userSchema.methods.generateRefreshToken = function () {
   );
 };
 
-// Temporary Token :- For email verification and password reset
 userSchema.methods.generateTemporaryToken = function () {
   const unHashedToken = crypto.randomBytes(20).toString("hex");
 
@@ -118,7 +111,7 @@ userSchema.methods.generateTemporaryToken = function () {
     .update(unHashedToken)
     .digest("hex");
 
-  const tokenExpiry = Date.now() + 20 * 60 * 1000; // 20 minutes
+  const tokenExpiry = Date.now() + 20 * 60 * 1000;
 
   return { unHashedToken, hashedToken, tokenExpiry };
 };

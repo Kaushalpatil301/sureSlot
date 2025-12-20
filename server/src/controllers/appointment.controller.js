@@ -2,17 +2,6 @@ import { asyncHandler } from "../utils/async-handler.js";
 import { ApiResponse } from "../utils/api-response.js";
 import * as appointmentService from "../services/appointment.service.js";
 
-/**
- * Appointment Controller - Thin HTTP layer for appointment management
- *
- * WHY thin: All business logic in service, controller only handles HTTP
- */
-
-/**
- * @route POST /api/v1/appointments
- * @desc Create new appointment type (draft)
- * @access Protected (requires login)
- */
 export const createAppointmentType = asyncHandler(async (req, res) => {
   const appointmentType = await appointmentService.createAppointmentType(
     req.user._id,
@@ -30,11 +19,6 @@ export const createAppointmentType = asyncHandler(async (req, res) => {
     );
 });
 
-/**
- * @route PATCH /api/v1/appointments/:id
- * @desc Update appointment type
- * @access Protected (owner only)
- */
 export const updateAppointmentType = asyncHandler(async (req, res) => {
   const appointmentType = await appointmentService.updateAppointmentType(
     req.params.id,
@@ -53,11 +37,6 @@ export const updateAppointmentType = asyncHandler(async (req, res) => {
     );
 });
 
-/**
- * @route POST /api/v1/appointments/:id/publish
- * @desc Publish appointment type (triggers slot generation)
- * @access Protected (owner only)
- */
 export const publishAppointmentType = asyncHandler(async (req, res) => {
   const appointmentType = await appointmentService.publishAppointmentType(
     req.params.id,
@@ -75,11 +54,6 @@ export const publishAppointmentType = asyncHandler(async (req, res) => {
     );
 });
 
-/**
- * @route POST /api/v1/appointments/:id/unpublish
- * @desc Unpublish appointment type
- * @access Protected (owner only)
- */
 export const unpublishAppointmentType = asyncHandler(async (req, res) => {
   const appointmentType = await appointmentService.unpublishAppointmentType(
     req.params.id,
@@ -97,11 +71,6 @@ export const unpublishAppointmentType = asyncHandler(async (req, res) => {
     );
 });
 
-/**
- * @route POST /api/v1/appointments/:id/share/enable
- * @desc Enable sharing (generates secure token)
- * @access Protected (owner only)
- */
 export const enableSharing = asyncHandler(async (req, res) => {
   const appointmentType = await appointmentService.enableSharing(
     req.params.id,
@@ -113,7 +82,7 @@ export const enableSharing = asyncHandler(async (req, res) => {
       200,
       {
         shareToken: appointmentType.shareToken,
-        shareUrl: `${req.protocol}://${req.get(
+        shareUrl: `${req.protocol}:
           "host"
         )}/api/v1/public/appointments/${appointmentType.shareToken}`,
       },
@@ -122,11 +91,6 @@ export const enableSharing = asyncHandler(async (req, res) => {
   );
 });
 
-/**
- * @route POST /api/v1/appointments/:id/share/disable
- * @desc Disable sharing (revokes token)
- * @access Protected (owner only)
- */
 export const disableSharing = asyncHandler(async (req, res) => {
   const appointmentType = await appointmentService.disableSharing(
     req.params.id,
@@ -140,11 +104,6 @@ export const disableSharing = asyncHandler(async (req, res) => {
     );
 });
 
-/**
- * @route DELETE /api/v1/appointments/:id
- * @desc Soft delete appointment type
- * @access Protected (owner only)
- */
 export const deleteAppointmentType = asyncHandler(async (req, res) => {
   await appointmentService.deleteAppointmentType(req.params.id, req.user._id);
 
@@ -153,11 +112,6 @@ export const deleteAppointmentType = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, null, "Appointment type deleted successfully"));
 });
 
-/**
- * @route GET /api/v1/appointments
- * @desc Get all appointment types for logged-in user
- * @access Protected
- */
 export const getAppointmentTypes = asyncHandler(async (req, res) => {
   const { isPublished, isShareEnabled } = req.query;
 
@@ -182,11 +136,6 @@ export const getAppointmentTypes = asyncHandler(async (req, res) => {
     );
 });
 
-/**
- * @route GET /api/v1/appointments/:id
- * @desc Get single appointment type
- * @access Protected (owner only)
- */
 export const getAppointmentTypeById = asyncHandler(async (req, res) => {
   const appointmentType = await appointmentService.getAppointmentTypeById(
     req.params.id,
@@ -204,11 +153,6 @@ export const getAppointmentTypeById = asyncHandler(async (req, res) => {
     );
 });
 
-/**
- * @route GET /api/v1/appointments/public/list
- * @desc Get public appointment types (directory listing)
- * @access Public
- */
 export const getPublicAppointmentTypes = asyncHandler(async (req, res) => {
   const { providerId } = req.query;
 
@@ -230,11 +174,6 @@ export const getPublicAppointmentTypes = asyncHandler(async (req, res) => {
     );
 });
 
-/**
- * @route GET /api/v1/appointments/:id/bookings
- * @desc Get all bookings for an appointment (organiser view)
- * @access Protected (organiser only - owner of appointment)
- */
 export const getAppointmentBookings = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { status, startDate, endDate, page, limit } = req.query;
@@ -256,11 +195,6 @@ export const getAppointmentBookings = asyncHandler(async (req, res) => {
     );
 });
 
-/**
- * @route GET /api/v1/appointments/:id/preview
- * @desc Get appointment preview (read-only view)
- * @access Public
- */
 export const getAppointmentPreview = asyncHandler(async (req, res) => {
   const { id } = req.params;
 

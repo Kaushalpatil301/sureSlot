@@ -28,7 +28,6 @@ import {
 
 const router = Router();
 
-// Public routes
 router
   .route("/register")
   .post(authLimiter, ...userRegisterValidator(), validate, registerUser);
@@ -41,7 +40,6 @@ router.post("/forgot-password", passwordResetLimiter, ...userForgotPasswordValid
 router.post("/reset-password/:resetToken", passwordResetLimiter, ...userResetForgotPasswordValidator(), validate, resetForgotPassword);
 router.post("/refresh-token", refreshAccessToken);
 
-// Protected routes
 router.post("/logout", verifyJWT, logoutUser);
 router.get("/current-user", verifyJWT, getCurrentUser);
 router.post(

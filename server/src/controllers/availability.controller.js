@@ -8,46 +8,20 @@ import {
   hasAvailabilityForDate,
 } from "../services/availability.service.js";
 
-/**
- * Availability Controller - Thin HTTP layer for read-only availability
- *
- * WHY controllers are thin:
- * - Only handle HTTP concerns (request parsing, response formatting)
- * - Business logic lives in services
- * - Easy to test services without HTTP mocking
- * - Controllers are just adapters between HTTP and business logic
- */
-
-/**
- * GET /availability
- * Query params: appointmentTypeId, date (single date or range)
- *
- * Supports two modes:
- * 1. Single date: ?appointmentTypeId=xxx&date=2025-12-20
- * 2. Date range: ?appointmentTypeId=xxx&startDate=2025-12-20&endDate=2025-12-27
- *
- * WHY flexible endpoint:
- * - Single endpoint for both use cases
- * - Reduces API surface area
- * - Client decides granularity
- */
 export const getAvailability = asyncHandler(async (req, res) => {
   const { appointmentTypeId, date, startDate, endDate, grouped } = req.query;
 
-  // Validate appointmentTypeId
   if (!appointmentTypeId) {
     throw new ApiError(400, "appointmentTypeId query parameter is required");
   }
 
   let slots;
 
-  // Determine which service method to call based on query params
   if (startDate && endDate) {
-    // Date range mode
+    
     const start = new Date(startDate);
     const end = new Date(endDate);
 
-    // Validate dates
     if (isNaN(start.getTime())) {
       throw new ApiError(400, "Invalid startDate format. Use YYYY-MM-DD");
     }
@@ -55,14 +29,13 @@ export const getAvailability = asyncHandler(async (req, res) => {
       throw new ApiError(400, "Invalid endDate format. Use YYYY-MM-DD");
     }
 
-    // Check if client wants grouped response
     if (grouped === "true") {
       slots = await getAvailabilityGroupedByDate(appointmentTypeId, start, end);
     } else {
       slots = await getAvailabilityForDateRange(appointmentTypeId, start, end);
     }
   } else if (date) {
-    // Single date mode
+    
     const targetDate = new Date(date);
 
     if (isNaN(targetDate.getTime())) {
@@ -77,10 +50,6 @@ export const getAvailability = asyncHandler(async (req, res) => {
     );
   }
 
-  // WHY ApiResponse wrapper:
-  // - Consistent response format across all endpoints
-  // - Client knows what to expect
-  // - Easy to add metadata (count, pagination, etc.)
   return res
     .status(200)
     .json(
@@ -94,21 +63,9 @@ export const getAvailability = asyncHandler(async (req, res) => {
     );
 });
 
-/**
- * GET /availability/check
- * Query params: appointmentTypeId, date
- *
- * Quick boolean check for availability (no slot details)
- *
- * WHY separate endpoint:
- * - Faster response for calendar highlighting
- * - No need to transfer slot data
- * - Clear intent: just checking, not fetching
- */
 export const checkAvailability = asyncHandler(async (req, res) => {
   const { appointmentTypeId, date } = req.query;
 
-  // Validate inputs
   if (!appointmentTypeId) {
     throw new ApiError(400, "appointmentTypeId query parameter is required");
   }
@@ -123,7 +80,6 @@ export const checkAvailability = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invalid date format. Use YYYY-MM-DD");
   }
 
-  // Check availability
   const hasAvailability = await hasAvailabilityForDate(
     appointmentTypeId,
     targetDate
@@ -144,21 +100,9 @@ export const checkAvailability = asyncHandler(async (req, res) => {
   );
 });
 
-/**
- * GET /availability/calendar
- * Query params: appointmentTypeId, startDate, endDate
- *
- * Returns availability grouped by date for calendar views
- *
- * WHY dedicated calendar endpoint:
- * - Optimized for calendar UI components
- * - Pre-grouped data reduces client processing
- * - Clear API intent
- */
 export const getCalendarAvailability = asyncHandler(async (req, res) => {
   const { appointmentTypeId, startDate, endDate } = req.query;
 
-  // Validate inputs
   if (!appointmentTypeId) {
     throw new ApiError(400, "appointmentTypeId query parameter is required");
   }
@@ -178,18 +122,12 @@ export const getCalendarAvailability = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invalid endDate format. Use YYYY-MM-DD");
   }
 
-  // Fetch grouped availability
   const groupedSlots = await getAvailabilityGroupedByDate(
     appointmentTypeId,
     start,
     end
   );
 
-  // Calculate metadata for client
-  // WHY in controller:
-  // - HTTP-specific formatting
-  // - Service returns pure data
-  // - Controller adds presentation layer
   const metadata = {
     totalDays: Object.keys(groupedSlots).length,
     totalSlots: Object.values(groupedSlots).reduce(

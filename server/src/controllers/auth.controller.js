@@ -18,12 +18,10 @@ const registerUser = asyncHandler(async (req, res) => {
       : "USER"
     : "USER";
 
-  // Validate required fields
   if (!username || !email || !password) {
     throw new ApiError(400, "All fields are required");
   }
 
-  // Check if user already exists
   const existingUser = await User.findOne({
     $or: [{ username: username.toLowerCase() }, { email: email.toLowerCase() }],
   });
@@ -35,18 +33,16 @@ const registerUser = asyncHandler(async (req, res) => {
 
   console.log("✅ Creating new user...");
 
-  // Create user
   const user = await User.create({
     username: username.toLowerCase(),
     email: email.toLowerCase(),
     password,
     role: normalizedRole,
-    isEmailVerified: true, // Auto-verify for development
+    isEmailVerified: true, 
   });
 
   console.log("✅ User created:", user._id);
 
-  // Try to send verification email (non-blocking)
   try {
     const { unHashedToken, hashedToken, tokenExpiry } =
       user.generateTemporaryToken();
@@ -82,7 +78,6 @@ const registerUser = asyncHandler(async (req, res) => {
     console.log("⚠️ Email sending failed (non-critical):", emailError.message);
   }
 
-  // Return created user
   const createdUser = await User.findById(user._id).select(
     "-password -refreshToken -emailVerificationToken -emailVerificationExpiry -forgotPasswordToken -forgotPasswordExpiry"
   );
@@ -106,12 +101,10 @@ const loginUser = asyncHandler(async (req, res) => {
 
   const { email, password } = req.body;
 
-  // Validate required fields
   if (!email || !password) {
     throw new ApiError(400, "Email and password are required");
   }
 
-  // Find user
   const user = await User.findOne({ email: email.toLowerCase() });
 
   if (!user) {
@@ -119,7 +112,6 @@ const loginUser = asyncHandler(async (req, res) => {
     throw new ApiError(401, "Invalid credentials");
   }
 
-  // Verify password
   const isPasswordValid = await user.isPasswordCorrect(password);
 
   if (!isPasswordValid) {
@@ -129,25 +121,21 @@ const loginUser = asyncHandler(async (req, res) => {
 
   console.log("✅ Password valid, generating tokens...");
 
-  // Generate tokens
   const accessToken = user.generateAccessToken();
   const refreshToken = user.generateRefreshToken();
 
-  // Save refresh token
   user.refreshToken = refreshToken;
   await user.save({ validateBeforeSave: false });
 
-  // Get user without sensitive data
   const loggedInUser = await User.findById(user._id).select(
     "-password -refreshToken -emailVerificationToken -emailVerificationExpiry -forgotPasswordToken -forgotPasswordExpiry"
   );
 
-  // Cookie options
   const options = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    maxAge: 7 * 24 * 60 * 60 * 1000, 
   };
 
   console.log("✅ Login successful");

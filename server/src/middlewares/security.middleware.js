@@ -1,6 +1,5 @@
 import helmet from "helmet";
 
-// Security headers middleware configuration
 export const securityHeaders = helmet({
   contentSecurityPolicy: {
     directives: {
@@ -10,6 +9,6 @@ export const securityHeaders = helmet({
       imgSrc: ["'self'", "data:", "https:"],
     },
   },
-  crossOriginEmbedderPolicy: false, // Required for some cloud services
+  crossOriginEmbedderPolicy: false, 
   crossOriginResourcePolicy: { policy: "cross-origin" },
 });

@@ -30,7 +30,8 @@ const userSchema = new Schema(
     },
     avatar: {
       type: String, // cloudinary url
-      default: "https://res.cloudinary.com/demo/image/upload/placeholder-avatar.png",
+      default:
+        "https://res.cloudinary.com/demo/image/upload/placeholder-avatar.png",
     },
     isEmailVerified: {
       type: Boolean,
@@ -55,6 +56,12 @@ const userSchema = new Schema(
       type: String,
       enum: ["USER", "ORGANISER", "ADMIN"],
       default: "USER",
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+      // WHY: Allows admins to deactivate users without deleting accounts
+      // Inactive users cannot login but data is preserved
     },
   },
   { timestamps: true }

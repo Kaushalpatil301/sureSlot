@@ -190,3 +190,163 @@ export const getDashboardOverview = asyncHandler(async (req, res) => {
       new ApiResponse(200, data, "Dashboard overview retrieved successfully")
     );
 });
+
+/**
+ * ============================================
+ * USER MANAGEMENT (ADMIN)
+ * ============================================
+ */
+
+/**
+ * @route GET /api/v1/admin/users
+ * @desc Get all users with filters and pagination
+ * @access Admin only
+ */
+export const getAllUsers = asyncHandler(async (req, res) => {
+  const { role, isActive, isEmailVerified, search, page, limit } = req.query;
+
+  const filters = {};
+  if (role) filters.role = role;
+  if (isActive !== undefined) filters.isActive = isActive;
+  if (isEmailVerified !== undefined) filters.isEmailVerified = isEmailVerified;
+  if (search) filters.search = search;
+  if (page) filters.page = page;
+  if (limit) filters.limit = limit;
+
+  const data = await adminService.getAllUsers(filters);
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, data, "Users retrieved successfully"));
+});
+
+/**
+ * @route GET /api/v1/admin/users/:id
+ * @desc Get user details by ID
+ * @access Admin only
+ */
+export const getUserById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const data = await adminService.getUserDetails(id);
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, data, "User details retrieved successfully"));
+});
+
+/**
+ * @route PUT /api/v1/admin/users/:id/activate
+ * @desc Activate user account
+ * @access Admin only
+ */
+export const activateUser = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const user = await adminService.activateUser(id);
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, user, "User activated successfully"));
+});
+
+/**
+ * @route PUT /api/v1/admin/users/:id/deactivate
+ * @desc Deactivate user account
+ * @access Admin only
+ */
+export const deactivateUser = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const user = await adminService.deactivateUser(id);
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, user, "User deactivated successfully"));
+});
+
+/**
+ * @route PUT /api/v1/admin/users/:id/role
+ * @desc Update user role
+ * @access Admin only
+ */
+export const updateUserRole = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { role } = req.body;
+
+  if (!role) {
+    throw new ApiError(400, "Role is required");
+  }
+
+  const user = await adminService.updateUserRole(id, role);
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, user, "User role updated successfully"));
+});
+
+/**
+ * ============================================
+ * BOOKING MANAGEMENT
+ * ============================================
+ */
+
+/**
+ * @route GET /api/v1/admin/bookings
+ * @desc Get all bookings with filters
+ * @access Admin only
+ */
+export const getAllBookings = asyncHandler(async (req, res) => {
+  const { status, userId, appointmentTypeId, startDate, endDate, page, limit } =
+    req.query;
+
+  const result = await adminService.getAllBookings({
+    status,
+    userId,
+    appointmentTypeId,
+    startDate,
+    endDate,
+    page,
+    limit,
+  });
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, result, "Bookings fetched successfully"));
+});
+/**
+ * ============================================
+ * PROVIDER MANAGEMENT
+ * ============================================
+ */
+
+/**
+ * @route GET /api/v1/admin/providers
+ * @desc Get all providers (users with ORGANISER role)
+ * @access Admin only
+ */
+export const getAllProviders = asyncHandler(async (req, res) => {
+  const { search, page, limit } = req.query;
+
+  const result = await adminService.getAllProviders({ search, page, limit });
+
+  res
+    .status(200)
+    .json(new ApiResponse(200, result, "Providers fetched successfully"));
+});
+/**
+ * @route GET /api/v1/admin/bookings/:id
+ * @desc Get booking details by ID
+ * @access Admin only
+ */
+export const getBookingById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const booking = await adminService.getBookingDetails(id);
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(200, booking, "Booking details fetched successfully")
+    );
+});

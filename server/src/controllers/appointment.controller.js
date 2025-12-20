@@ -229,3 +229,50 @@ export const getPublicAppointmentTypes = asyncHandler(async (req, res) => {
       )
     );
 });
+
+/**
+ * @route GET /api/v1/appointments/:id/bookings
+ * @desc Get all bookings for an appointment (organiser view)
+ * @access Protected (organiser only - owner of appointment)
+ */
+export const getAppointmentBookings = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { status, startDate, endDate, page, limit } = req.query;
+
+  const result = await appointmentService.getAppointmentBookings(
+    id,
+    req.user._id,
+    { status, startDate, endDate, page, limit }
+  );
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        result,
+        "Appointment bookings retrieved successfully"
+      )
+    );
+});
+
+/**
+ * @route GET /api/v1/appointments/:id/preview
+ * @desc Get appointment preview (read-only view)
+ * @access Public
+ */
+export const getAppointmentPreview = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const appointment = await appointmentService.getAppointmentPreview(id);
+
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        appointment,
+        "Appointment preview retrieved successfully"
+      )
+    );
+});

@@ -117,4 +117,92 @@ router.get(
   adminController.getDashboardOverview
 );
 
+// ============ User Management ============
+
+/**
+ * GET /api/v1/admin/users
+ * Query params: role, isActive, isEmailVerified, search, page, limit
+ * Returns: Paginated list of users
+ */
+router.get("/users", verifyJWT, requireAdmin, adminController.getAllUsers);
+
+/**
+ * GET /api/v1/admin/users/:id
+ * Returns: User details with booking stats
+ */
+router.get("/users/:id", verifyJWT, requireAdmin, adminController.getUserById);
+
+/**
+ * PUT /api/v1/admin/users/:id/activate
+ * Activate user account
+ */
+router.put(
+  "/users/:id/activate",
+  verifyJWT,
+  requireAdmin,
+  adminController.activateUser
+);
+
+/**
+ * PUT /api/v1/admin/users/:id/deactivate
+ * Deactivate user account
+ */
+router.put(
+  "/users/:id/deactivate",
+  verifyJWT,
+  requireAdmin,
+  adminController.deactivateUser
+);
+
+/**
+ * PUT /api/v1/admin/users/:id/role
+ * Body: { role: "USER" | "ORGANISER" | "ADMIN" }
+ * Update user role
+ */
+router.put(
+  "/users/:id/role",
+  verifyJWT,
+  requireAdmin,
+  adminController.updateUserRole
+);
+
+// ============ Booking Management ============
+
+/**
+ * GET /api/v1/admin/bookings
+ * Query params: status, userId, appointmentTypeId, startDate, endDate, page, limit
+ * Returns: Paginated list of bookings with details
+ */
+router.get(
+  "/bookings",
+  verifyJWT,
+  requireAdmin,
+  adminController.getAllBookings
+);
+
+/**
+ * GET /api/v1/admin/bookings/:id
+ * Returns: Detailed booking information
+ */
+router.get(
+  "/bookings/:id",
+  verifyJWT,
+  requireAdmin,
+  adminController.getBookingById
+);
+
+// ============ Provider Management ============
+
+/**
+ * GET /api/v1/admin/providers
+ * Query params: search, page, limit
+ * Returns: List of users with ORGANISER role
+ */
+router.get(
+  "/providers",
+  verifyJWT,
+  requireAdmin,
+  adminController.getAllProviders
+);
+
 export default router;

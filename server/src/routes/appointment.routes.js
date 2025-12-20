@@ -105,4 +105,25 @@ router.post(
  */
 router.get("/public/list", appointmentController.getPublicAppointmentTypes);
 
+// ============ Booking Management (Organiser) ============
+
+/**
+ * GET /api/v1/appointments/:id/bookings
+ * Get all bookings for a specific appointment (organiser view)
+ * Query params: status, startDate, endDate, page, limit
+ * WHY organiser-only: View bookings for your own appointments
+ */
+router.get(
+  "/:id/bookings",
+  verifyJWT,
+  appointmentController.getAppointmentBookings
+);
+
+/**
+ * GET /api/v1/appointments/:id/preview
+ * Get appointment preview (read-only view with stats)
+ * WHY public: Allow viewing appointment details before booking
+ */
+router.get("/:id/preview", appointmentController.getAppointmentPreview);
+
 export default router;

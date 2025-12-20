@@ -1,9 +1,11 @@
 import { AppointmentType } from "../models/appointmentType.model.js";
 import { Slot } from "../models/slot.model.js";
+import { Booking } from "../models/booking.model.js";
 import { ApiError } from "../utils/api-error.js";
 import { validateWorkingHours } from "../utils/time.js";
 import * as slotService from "./slot.service.js";
 import crypto from "crypto";
+import mongoose from "mongoose";
 
 /**
  * Appointment Service - Manages AppointmentType lifecycle
@@ -361,4 +363,200 @@ const regenerateSlotsForAppointmentType = async (appointmentType) => {
   // Generate new slots
   const daysToGenerate = appointmentType.maxAdvanceBooking || 90;
   await generateSlotsForAppointmentType(appointmentType, daysToGenerate);
+};
+
+/**
+ * Get all bookings for a specific appointment (organiser view)
+ * @param {String} appointmentTypeId - Appointment type ID
+ * @param {String} userId - Organiser's user ID
+ * @param {Object} filters - status, startDate, endDate, page, limit
+ * @returns {Promise<Object>} Paginated bookings
+ */
+export const getAppointmentBookings = async (
+  appointmentTypeId,
+  userId,
+  filters = {}
+) => {
+  const page = parseInt(filters.page) || 1;
+  const limit = parseInt(filters.limit) || 20;
+  const skip = (page - 1) * limit;
+
+  // Verify appointment belongs to organiser
+  const appointmentType = await AppointmentType.findOne({
+    _id: appointmentTypeId,
+    userId,
+  });
+
+  if (!appointmentType) {
+    throw new ApiError(
+      404,
+      "Appointment not found or you don't have permission"
+    );
+  }
+
+  // Build match stage
+  const matchStage = {};
+
+  if (filters.status) {
+    matchStage.status = filters.status;
+  }
+
+  // Build aggregation pipeline
+  const pipeline = [
+    // Match slots for this appointment
+    {
+      $match: {
+        appointmentTypeId: mongoose.Types.ObjectId(appointmentTypeId),
+      },
+    },
+
+    // Lookup bookings
+    {
+      $lookup: {
+        from: "bookings",
+        localField: "_id",
+        foreignField: "slotId",
+        as: "bookings",
+      },
+    },
+
+    // Unwind bookings
+    { $unwind: "$bookings" },
+
+    // Match booking filters
+    { $match: { "bookings.status": matchStage.status || { $exists: true } } },
+
+    // Filter by date range
+    ...(filters.startDate || filters.endDate
+      ? [
+          {
+            $match: {
+              startTime: {
+                ...(filters.startDate && {
+                  $gte: new Date(filters.startDate),
+                }),
+                ...(filters.endDate && { $lte: new Date(filters.endDate) }),
+              },
+            },
+          },
+        ]
+      : []),
+
+    // Lookup user (customer)
+    {
+      $lookup: {
+        from: "users",
+        localField: "bookings.userId",
+        foreignField: "_id",
+        as: "user",
+      },
+    },
+    { $unwind: "$user" },
+
+    // Sort by slot time
+    { $sort: { startTime: -1 } },
+
+    // Facet for pagination
+    {
+      $facet: {
+        metadata: [{ $count: "total" }],
+        data: [
+          { $skip: skip },
+          { $limit: limit },
+          {
+            $project: {
+              bookingId: "$bookings._id",
+              status: "$bookings.status",
+              answers: "$bookings.answers",
+              notes: "$bookings.notes",
+              createdAt: "$bookings.createdAt",
+              slot: {
+                _id: "$_id",
+                startTime: "$startTime",
+                endTime: "$endTime",
+                duration: "$duration",
+                capacity: "$capacity",
+                bookedCount: "$bookedCount",
+              },
+              user: {
+                _id: "$user._id",
+                fullname: "$user.fullname",
+                email: "$user.email",
+                username: "$user.username",
+                avatar: "$user.avatar",
+              },
+            },
+          },
+        ],
+      },
+    },
+  ];
+
+  const [result] = await Slot.aggregate(pipeline);
+
+  const total = result.metadata[0]?.total || 0;
+  const bookings = result.data;
+
+  return {
+    appointmentType: {
+      _id: appointmentType._id,
+      name: appointmentType.name,
+      description: appointmentType.description,
+    },
+    bookings,
+    pagination: {
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+      hasMore: page < Math.ceil(total / limit),
+    },
+  };
+};
+
+/**
+ * Get appointment preview (read-only view without editing capabilities)
+ * @param {String} appointmentTypeId - Appointment type ID
+ * @returns {Promise<Object>} Appointment details for preview
+ */
+export const getAppointmentPreview = async (appointmentTypeId) => {
+  const appointmentType = await AppointmentType.findById(appointmentTypeId)
+    .select("-shareToken")
+    .lean();
+
+  if (!appointmentType) {
+    throw new ApiError(404, "Appointment not found");
+  }
+
+  // Get basic stats
+  const stats = await Slot.aggregate([
+    {
+      $match: { appointmentTypeId: mongoose.Types.ObjectId(appointmentTypeId) },
+    },
+    {
+      $group: {
+        _id: null,
+        totalSlots: { $sum: 1 },
+        totalCapacity: { $sum: "$capacity" },
+        totalBooked: { $sum: "$bookedCount" },
+        availableSlots: {
+          $sum: {
+            $cond: [{ $lt: ["$bookedCount", "$capacity"] }, 1, 0],
+          },
+        },
+      },
+    },
+  ]);
+
+  const previewStats = stats[0] || {
+    totalSlots: 0,
+    totalCapacity: 0,
+    totalBooked: 0,
+    availableSlots: 0,
+  };
+
+  return {
+    ...appointmentType,
+    stats: previewStats,
+  };
 };

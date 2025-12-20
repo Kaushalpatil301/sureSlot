@@ -17,6 +17,7 @@ import paymentRoutes from "./routes/payment.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import appointmentRoutes from "./routes/appointment.routes.js";
 import authRoutes from "./routes/auth.route.js";
+import userRoutes from "./routes/user.routes.js";
 
 /**
  * Initialize Express application
@@ -93,6 +94,7 @@ app.use(`${API_PREFIX}/payments`, paymentRoutes);
 app.use(`${API_PREFIX}/admin`, adminRoutes);
 app.use(`${API_PREFIX}/appointments`, appointmentRoutes);
 app.use(`${API_PREFIX}/auth`, authRoutes);
+app.use(`${API_PREFIX}/users`, userRoutes);
 
 // ===========================
 // Error Handling

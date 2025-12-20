@@ -619,3 +619,509 @@ function formatUtilizationRange(boundary) {
   };
   return ranges[boundary] || `${boundary}%+`;
 }
+
+/**
+ * ============================================
+ * USER MANAGEMENT (ADMIN)
+ * ============================================
+ */
+
+/**
+ * Get all users with filters and pagination
+ * @param {Object} filters - role, isActive, isEmailVerified, search, page, limit
+ * @returns {Promise<Object>} Paginated users list
+ */
+export const getAllUsers = async (filters = {}) => {
+  const page = parseInt(filters.page) || 1;
+  const limit = parseInt(filters.limit) || 20;
+  const skip = (page - 1) * limit;
+
+  // Build match stage
+  const matchStage = {};
+
+  if (filters.role) {
+    matchStage.role = filters.role;
+  }
+
+  if (filters.isActive !== undefined) {
+    matchStage.isActive = filters.isActive === "true";
+  }
+
+  if (filters.isEmailVerified !== undefined) {
+    matchStage.isEmailVerified = filters.isEmailVerified === "true";
+  }
+
+  // Search by name, email, or username
+  if (filters.search) {
+    matchStage.$or = [
+      { fullname: { $regex: filters.search, $options: "i" } },
+      { email: { $regex: filters.search, $options: "i" } },
+      { username: { $regex: filters.search, $options: "i" } },
+    ];
+  }
+
+  const total = await User.countDocuments(matchStage);
+
+  const users = await User.find(matchStage)
+    .select(
+      "-password -refreshToken -forgotPasswordToken -emailVerificationToken"
+    )
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  return {
+    users,
+    pagination: {
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+      hasMore: page < Math.ceil(total / limit),
+    },
+  };
+};
+
+/**
+ * Activate a user account
+ * @param {String} userId - User ID
+ * @returns {Promise<Object>} Updated user
+ */
+export const activateUser = async (userId) => {
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { isActive: true },
+    { new: true }
+  ).select("-password -refreshToken");
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  return user;
+};
+
+/**
+ * Deactivate a user account
+ * @param {String} userId - User ID
+ * @returns {Promise<Object>} Updated user
+ */
+export const deactivateUser = async (userId) => {
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { isActive: false },
+    { new: true }
+  ).select("-password -refreshToken");
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  return user;
+};
+
+/**
+ * Update user role
+ * @param {String} userId - User ID
+ * @param {String} newRole - New role (USER/ORGANISER/ADMIN)
+ * @returns {Promise<Object>} Updated user
+ */
+export const updateUserRole = async (userId, newRole) => {
+  const validRoles = ["USER", "ORGANISER", "ADMIN"];
+
+  if (!validRoles.includes(newRole)) {
+    throw new ApiError(400, "Invalid role");
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { role: newRole },
+    { new: true, runValidators: true }
+  ).select("-password -refreshToken");
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  return user;
+};
+
+/**
+ * Get user details by ID (admin view)
+ * @param {String} userId - User ID
+ * @returns {Promise<Object>} User with booking stats
+ */
+export const getUserDetails = async (userId) => {
+  const user = await User.findById(userId).select(
+    "-password -refreshToken -forgotPasswordToken -emailVerificationToken"
+  );
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  // Get booking stats for this user
+  const bookingStats = await Booking.aggregate([
+    { $match: { userId: user._id } },
+    {
+      $group: {
+        _id: "$status",
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const stats = {};
+  bookingStats.forEach((stat) => {
+    stats[stat._id] = stat.count;
+  });
+
+  return {
+    ...user.toObject(),
+    bookingStats: {
+      total: Object.values(stats).reduce((sum, count) => sum + count, 0),
+      byStatus: stats,
+    },
+  };
+};
+
+/**
+ * ============================================
+ * BOOKING MANAGEMENT (ADMIN)
+ * ============================================
+ */
+
+/**
+ * Get all bookings with filters and pagination (admin view)
+ * @param {Object} filters - status, userId, appointmentTypeId, startDate, endDate, page, limit
+ * @returns {Promise<Object>} Paginated bookings with details
+ */
+export const getAllBookings = async (filters = {}) => {
+  const page = parseInt(filters.page) || 1;
+  const limit = parseInt(filters.limit) || 20;
+  const skip = (page - 1) * limit;
+
+  // Build match stage
+  const matchStage = {};
+
+  if (filters.status) {
+    matchStage.status = filters.status;
+  }
+
+  if (filters.userId) {
+    matchStage.userId = mongoose.Types.ObjectId(filters.userId);
+  }
+
+  // Build aggregation pipeline
+  const pipeline = [
+    { $match: matchStage },
+
+    // Lookup slot details
+    {
+      $lookup: {
+        from: "slots",
+        localField: "slotId",
+        foreignField: "_id",
+        as: "slot",
+      },
+    },
+    { $unwind: "$slot" },
+
+    // Filter by appointmentTypeId if provided
+    ...(filters.appointmentTypeId
+      ? [
+          {
+            $match: {
+              "slot.appointmentTypeId": mongoose.Types.ObjectId(
+                filters.appointmentTypeId
+              ),
+            },
+          },
+        ]
+      : []),
+
+    // Filter by slot time range
+    ...(filters.startDate || filters.endDate
+      ? [
+          {
+            $match: {
+              "slot.startTime": {
+                ...(filters.startDate && {
+                  $gte: new Date(filters.startDate),
+                }),
+                ...(filters.endDate && { $lte: new Date(filters.endDate) }),
+              },
+            },
+          },
+        ]
+      : []),
+
+    // Lookup appointment type
+    {
+      $lookup: {
+        from: "appointmenttypes",
+        localField: "slot.appointmentTypeId",
+        foreignField: "_id",
+        as: "appointmentType",
+      },
+    },
+    { $unwind: "$appointmentType" },
+
+    // Lookup user (customer)
+    {
+      $lookup: {
+        from: "users",
+        localField: "userId",
+        foreignField: "_id",
+        as: "user",
+      },
+    },
+    { $unwind: "$user" },
+
+    // Lookup provider if exists
+    {
+      $lookup: {
+        from: "users",
+        localField: "slot.providerId",
+        foreignField: "_id",
+        as: "provider",
+      },
+    },
+
+    // Sort by slot start time (most recent first)
+    { $sort: { "slot.startTime": -1 } },
+
+    // Facet for pagination
+    {
+      $facet: {
+        metadata: [{ $count: "total" }],
+        data: [
+          { $skip: skip },
+          { $limit: limit },
+          {
+            $project: {
+              _id: 1,
+              status: 1,
+              answers: 1,
+              notes: 1,
+              createdAt: 1,
+              updatedAt: 1,
+              slot: {
+                _id: 1,
+                startTime: 1,
+                endTime: 1,
+                duration: 1,
+                capacity: 1,
+                bookedCount: 1,
+              },
+              appointmentType: {
+                _id: 1,
+                name: 1,
+                description: 1,
+                duration: 1,
+                price: 1,
+                currency: 1,
+              },
+              user: {
+                _id: 1,
+                fullname: 1,
+                email: 1,
+                username: 1,
+                avatar: 1,
+              },
+              provider: {
+                $cond: {
+                  if: { $gt: [{ $size: "$provider" }, 0] },
+                  then: {
+                    _id: { $arrayElemAt: ["$provider._id", 0] },
+                    fullname: { $arrayElemAt: ["$provider.fullname", 0] },
+                    email: { $arrayElemAt: ["$provider.email", 0] },
+                  },
+                  else: null,
+                },
+              },
+            },
+          },
+        ],
+      },
+    },
+  ];
+
+  const [result] = await Booking.aggregate(pipeline);
+
+  const total = result.metadata[0]?.total || 0;
+  const bookings = result.data;
+
+  return {
+    bookings,
+    pagination: {
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+      hasMore: page < Math.ceil(total / limit),
+    },
+  };
+};
+
+/**
+ * Get booking details by ID (admin view)
+ * @param {String} bookingId - Booking ID
+ * @returns {Promise<Object>} Detailed booking information
+ */
+export const getBookingDetails = async (bookingId) => {
+  const pipeline = [
+    { $match: { _id: mongoose.Types.ObjectId(bookingId) } },
+
+    // Lookup slot
+    {
+      $lookup: {
+        from: "slots",
+        localField: "slotId",
+        foreignField: "_id",
+        as: "slot",
+      },
+    },
+    { $unwind: "$slot" },
+
+    // Lookup appointment type
+    {
+      $lookup: {
+        from: "appointmenttypes",
+        localField: "slot.appointmentTypeId",
+        foreignField: "_id",
+        as: "appointmentType",
+      },
+    },
+    { $unwind: "$appointmentType" },
+
+    // Lookup user
+    {
+      $lookup: {
+        from: "users",
+        localField: "userId",
+        foreignField: "_id",
+        as: "user",
+      },
+    },
+    { $unwind: "$user" },
+
+    // Lookup provider
+    {
+      $lookup: {
+        from: "users",
+        localField: "slot.providerId",
+        foreignField: "_id",
+        as: "provider",
+      },
+    },
+
+    // Lookup payment
+    {
+      $lookup: {
+        from: "payments",
+        localField: "_id",
+        foreignField: "bookingId",
+        as: "payments",
+      },
+    },
+
+    {
+      $project: {
+        _id: 1,
+        status: 1,
+        answers: 1,
+        notes: 1,
+        createdAt: 1,
+        updatedAt: 1,
+        slot: 1,
+        appointmentType: {
+          _id: 1,
+          name: 1,
+          description: 1,
+          duration: 1,
+          price: 1,
+          currency: 1,
+          questions: 1,
+        },
+        user: {
+          _id: 1,
+          fullname: 1,
+          email: 1,
+          username: 1,
+          avatar: 1,
+          role: 1,
+        },
+        provider: {
+          $cond: {
+            if: { $gt: [{ $size: "$provider" }, 0] },
+            then: {
+              _id: { $arrayElemAt: ["$provider._id", 0] },
+              fullname: { $arrayElemAt: ["$provider.fullname", 0] },
+              email: { $arrayElemAt: ["$provider.email", 0] },
+            },
+            else: null,
+          },
+        },
+        payments: 1,
+      },
+    },
+  ];
+
+  const [booking] = await Booking.aggregate(pipeline);
+
+  if (!booking) {
+    throw new ApiError(404, "Booking not found");
+  }
+
+  return booking;
+};
+
+/**
+ * ============================================
+ * PROVIDER MANAGEMENT (ADMIN/ORGANISER)
+ * ============================================
+ */
+
+/**
+ * Get all providers (users with ORGANISER role)
+ * @param {Object} filters - search, page, limit
+ * @returns {Promise<Object>} Paginated list of providers
+ */
+export const getAllProviders = async (filters = {}) => {
+  const page = parseInt(filters.page) || 1;
+  const limit = parseInt(filters.limit) || 20;
+  const skip = (page - 1) * limit;
+
+  const query = { role: "ORGANISER", isActive: true };
+
+  if (filters.search) {
+    query.$or = [
+      { fullname: { $regex: filters.search, $options: "i" } },
+      { email: { $regex: filters.search, $options: "i" } },
+      { username: { $regex: filters.search, $options: "i" } },
+    ];
+  }
+
+  const [providers, total] = await Promise.all([
+    User.find(query)
+      .select("fullname email username avatar role createdAt")
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 })
+      .lean(),
+    User.countDocuments(query),
+  ]);
+
+  return {
+    providers,
+    pagination: {
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+      hasMore: page < Math.ceil(total / limit),
+    },
+  };
+};
